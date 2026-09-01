@@ -236,6 +236,35 @@ Der SIP-Zugang steht in der `.env` (`SIP_USER`, `SIP_DOMAIN`, `SIP_PASS`). Das
 Einrichtungsskript trägt das Passwort in die FreeSWITCH-Konfiguration ein und
 setzt deren Rechte auf 600 — im Git liegen nur Vorlagen mit Platzhaltern.
 
+### Durchwahl parallel zu einem Endgerät klingeln lassen
+
+Manche Provider (z. B. Fonial/Plusnet) klingeln bei einer Durchwahl **parallel**
+an allen dafür registrierten Zielen — bei uns also gleichzeitig an AgentOne und
+an einem echten Telefon/Softphone. Ohne Gegenmaßnahme gewinnt AgentOne das
+Rennen aber immer: `answer()` ist im Dialplan die erste Aktion, es gibt keine
+Verzögerung davor. Das Telefon klingelt dann faktisch nie, weil der Anruf schon
+beim Assistenten gelandet ist, bevor am Gerät überhaupt ein Klingelzeichen
+ankommt.
+
+`DW3_DDI` in der `.env` schaltet eine Wartezeit vor `answer()` frei
+(`telefon/freeswitch/dw3_warten.xml.tpl`, deployed als `00_dw3_warten.xml` –
+lädt alphabetisch vor `00_praxis_ab.xml`): erkennt der Dialplan die passende
+Durchwahl, wartet er 20 Sekunden, bevor überhaupt abgenommen wird. Nimmt in der
+Zeit jemand am registrierten Endgerät ab, bricht der Provider den Versuch bei
+AgentOne per SIP-`CANCEL` ab — der Dialplan kommt gar nicht mehr bis zum
+`answer()`. Nimmt niemand ab, läuft er nach den 20 Sekunden normal weiter zu
+Ansage und Aufnahme, identisch zum Standard-Anrufbeantworter.
+
+Wichtig: die Durchwahl selbst kommt bei diesem Trunk nicht im
+`destination_number` an (der zeigt bei Plusnet nur eine interne Trunk-Kennung,
+unabhängig von der gewählten Nummer), sondern im SIP-Header
+`X-ORIGINAL-DDI-URI` der eingehenden Einladung — nur der ist brauchbar, um DW3
+von anderen Anrufen zu unterscheiden. `DW3_DDI` erwartet die volle Rufnummer
+inklusive Durchwahl-Ziffer(n), nur Ziffern, kein `+`.
+
+Leer lassen = keine Sonderbehandlung, jeder Anruf landet sofort beim
+Anrufbeantworter wie bisher.
+
 Text ändern: `profile/$PROFIL/ansage.txt` bearbeiten (siehe
 [Branchen-Profil](#kategorien--branchen-profil)), `ansage_bauen.sh` erneut
 ausführen. Für den Praxisbetrieb muss die Ansage den Notruf 112 nennen und auf

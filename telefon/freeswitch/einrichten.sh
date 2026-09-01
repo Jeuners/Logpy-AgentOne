@@ -44,6 +44,7 @@ fuelle() {  # <vorlage> <ziel>
       -e "s|@@SIP_PASS@@|$SIP_PASS|g" \
       -e "s|@@SIP_DOMAIN@@|$SIP_DOMAIN|g" \
       -e "s|@@SIP_PROXY@@|${SIP_PROXY:-$SIP_DOMAIN}|g" \
+      -e "s|@@DW3_DDI@@|${DW3_DDI:-}|g" \
       -e "s|@@PROJEKT@@|$PROJEKT|g" "$1" > "$2"
 }
 
@@ -55,3 +56,10 @@ echo "Trunk    -> $FS_ETC/sip_profiles/external/plusnet.xml (Rechte 600)"
 echo "Dialplan -> $FS_ETC/dialplan/public/00_praxis_ab.xml"
 echo "Ansage   -> $PROJEKT/telefon/ansage.wav"
 echo "Eingang  -> $PROJEKT/telefon/eingang"
+
+if [ -n "${DW3_DDI:-}" ]; then
+  fuelle "$PROJEKT/telefon/freeswitch/dw3_warten.xml.tpl" "$FS_ETC/dialplan/public/00_dw3_warten.xml"
+  echo "DW3      -> $FS_ETC/dialplan/public/00_dw3_warten.xml (DDI: $DW3_DDI, 20s Wartezeit)"
+else
+  echo "DW3      -> uebersprungen (DW3_DDI leer in .env)"
+fi
