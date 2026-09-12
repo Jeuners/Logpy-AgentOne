@@ -6,3 +6,7 @@ piper-tts>=1.2
 certifi
 # Nur nötig für STT_BACKEND=faster; der Standard ist whisper.cpp.
 faster-whisper>=1.2
+
+# Outbound-ESL-Bootstrap fuer die Pipecat-Testleitung (dialog/pipecat_bootstrap.py):
+# nimmt FreeSWITCHs socket()-Uebergabe an, macht answer()+uuid_audio_stream+park().
+greenswitch>=0.0.19

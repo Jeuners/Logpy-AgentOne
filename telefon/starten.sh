@@ -129,6 +129,16 @@ if [ "${status:-}" = "UP" ]; then
     nohup python3 -u -m pipe.monitor >> telefon/monitor.log 2>&1 &
     echo "Stoerungswache gestartet (Log: telefon/monitor.log)"
   fi
+  # Pipecat-Testleitung (Nebenstelle 7501) - nur wenn konfiguriert, siehe
+  # dialog/pipecat_bootstrap.py und dialplan/default/06_agentzwei_pipecat_test.xml.
+  if [ -n "${ASTRA_TELEFON_WS_URL:-}" ]; then
+    if pgrep -f "[d]ialog.pipecat_bootstrap" >/dev/null; then
+      echo "Pipecat-Bootstrap laeuft bereits."
+    else
+      nohup python3 -u -m dialog.pipecat_bootstrap >> telefon/pipecat_bootstrap.log 2>&1 &
+      echo "Pipecat-Bootstrap gestartet (Log: telefon/pipecat_bootstrap.log)"
+    fi
+  fi
   sleep 2
   echo
   ip=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
