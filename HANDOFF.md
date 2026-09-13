@@ -151,3 +151,28 @@ bleiben, siehe `run_telephony_call`/`_run_pipeline`s Cleanup-Pfad.
   `DW9_DDI=49210378916179`.
 - `ASTRA_TELEFON_SECRET` — nur als Laufzeit-Env-Var gesetzt, nicht in einer
   Datei auf minim4-1 abgelegt. Muss auf beiden Seiten übereinstimmen.
+
+## GELÖST 2026-09-13 (Folgefehler): Begrüßung komplett stumm nach dem Cap-Fix
+
+Der Cap-Fix oben (Puffer auf 12s angehoben) legte einen zweiten, tieferen Bug
+frei: `TTSStoppedFrame` erreicht `serialize()` in diesem Transport **nie** -
+per Frame-Type-Tracing bestätigt, `FastAPIWebsocketOutputTransport` reicht an
+den Serializer nur `OutputAudioRawFrame` und (bei Barge-in) `InterruptionFrame`
+durch, `TTSStoppedFrame` wird intern fürs "Bot hat aufgehört zu sprechen"
+verbraucht und nie weitergereicht. Der `if isinstance(frame, TTSStoppedFrame)`-
+Zweig war also von Anfang an toter Code - geflusht wurde bisher ausschließlich
+über die (zu klein bemessene) Cap. Mit der korrigierten, viel höheren Cap
+erreichte eine normal lange Antwort (3-4s) diese nie mehr - und ohne den
+(toten) TTSStoppedFrame-Pfad flusste dann gar nichts mehr: Astra loggte
+Begrüßung + Transkript ganz normal, aber bei FreeSWITCH kam kein einziges
+Playback-Event an.
+
+**Fix:** Flush jetzt über ein Inaktivitäts-Timeout (300ms ohne neuen
+Audio-Frame) statt über `TTSStoppedFrame`. Da der Idle-Flush aus einem
+Hintergrund-Task feuert (nicht aus `serialize()`s Rückgabewert), braucht er
+einen eigenen Sendeweg - der Serializer nimmt jetzt zusätzlich zu `notify`
+ein `send`-Callable (`websocket.send_text`). Commit `0a0c8d5` in
+`martin-voice-interface`.
+
+Live verifiziert (Loopback-Test): 2,88s gesendet, FreeSWITCH spielt 3,02s
+vollständig ab ("done playing file") - keine Stille, kein Abschneiden mehr.
