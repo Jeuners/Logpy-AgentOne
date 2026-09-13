@@ -2,7 +2,7 @@
 
 ## Stand in einem Satz
 
-Externer Anruf auf einer echten Durchwahl (9/rufagent) erreicht jetzt zuverlässig Astra über den vollen Weg (Plusnet → FreeSWITCH → `dialog/pipecat_bootstrap.py` → WebSocket → Astra) — offen ist, dass Astra dem Anrufer nach dem ersten "Einen Moment bitte" keine fertige Antwort mehr liefert, bevor der Anrufer auflegt (Details unten, neuer Hauptpunkt für morgen).
+Voller Weg funktioniert Ende-zu-Ende: externer Anruf auf Durchwahl 9 (Plusnet → FreeSWITCH → `dialog/pipecat_bootstrap.py` → WebSocket → Astra) erreicht Astra, und Astra liefert jetzt auch eine echte, fertige Antwort statt nur "Einen Moment bitte" (Fix 2026-09-13, siehe unten) - kein offener Blocker mehr bekannt.
 
 ## 2026-09-13 (Tag) — Zwei Bugs gefunden und behoben
 
@@ -54,7 +54,7 @@ Registrierungskonflikt"). Vor jedem externen Testanruf prüfen:
 `pgrep -xl Telephone` auf der Maschine, auf der es installiert ist (hier:
 minim4-1, nicht minim4-2!), und bei Bedarf beenden.
 
-## Neuer Hauptpunkt für morgen: keine fertige Antwort am Telefon
+## GELÖST 2026-09-13: keine fertige Antwort am Telefon
 
 Realer externer Testanruf (2026-09-13, ~12:14 Uhr) mit echtem Sprecher:
 
@@ -87,6 +87,26 @@ Anrufer gibt vorher auf. Zu prüfen morgen:
 - Ob ein kürzerer/schnellerer Zwischenbescheid-Rhythmus (z. B. alle 2-3s
   ein weiteres "Moment noch") das gefühlte Hängen entschärfen würde, während
   am eigentlichen Latenzproblem gearbeitet wird.
+
+**Root Cause bestätigt:** `granite4.2:8b` war zwischen dem Server-Start
+(01:50 Uhr) und dem Testanruf (12:14 Uhr) aus Ollama verdrängt worden, trotz
+`keep_alive: -1` in `astra/core.py::build_request` - `ollama ps` zeigte
+davor `"models": []`. Direkt gemessen: kalt `load_duration` ~12,2s, warm
+Gesamtdauer <0,9s. Der Anrufer wurde ungeduldig/legte auf, lange bevor die
+eigentliche Generierung (nach dem Laden nur ~1s) fertig war.
+
+**Fix:** `astra/server.py::telefon_inbound` feuert jetzt beim
+Verbindungsaufbau parallel zur Begrüßung einen Wegwerf-Generate-Aufruf an
+Ollama (`_warm_ollama`, fire-and-forget, Fehler werden ignoriert) - der
+Kaltstart-Tax landet dadurch während die Begrüßung läuft, nicht während der
+ersten echten Antwort. Verifiziert mit echtem externen Testanruf: LLM-Zeit
+1355 ms, vollständige Antwort kam durch, keine Abbrüche mehr. Commit
+`a66629a` in `martin-voice-interface`.
+
+**Falls das Problem wiederkehrt** (z. B. weil ein anderer Ollama-Verbraucher
+zwischen Anrufen ein anderes Modell lädt und `granite4.2:8b` trotzdem wieder
+verdrängt wird): `curl http://127.0.0.1:11434/api/ps` vor einem Testanruf
+prüfen, ob das Modell geladen ist.
 
 ## Weiterhin offen (aus der vorherigen Handoff-Fassung, unverändert)
 
