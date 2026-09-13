@@ -176,3 +176,33 @@ ein `send`-Callable (`websocket.send_text`). Commit `0a0c8d5` in
 
 Live verifiziert (Loopback-Test): 2,88s gesendet, FreeSWITCH spielt 3,02s
 vollständig ab ("done playing file") - keine Stille, kein Abschneiden mehr.
+
+## GELÖST 2026-09-13 (weitere Folgefehler): zu lange Antworten + hackige Wiedergabe
+
+Nach dem Idle-Flush-Fix zwei weitere Probleme live gemeldet:
+
+1. **Antworten zu lang** - der Prompt allein ("1-2 kurze Sätze") wurde vom
+   Modell ignoriert, Antworten liefen auf 2-3 Sätze und lang genug, um die
+   12s-Puffergrenze zu reißen. Fix: harte `num_predict`-Grenze
+   (`Settings.telefon_max_tokens`, Standard 40, `ASTRA_TELEFON_MAX_TOKENS`
+   env-einstellbar) statt nur einer Bitte im Prompt. Commit `4e6f266`.
+2. **Wiedergabe "hackig"** - der 300ms-Idle-Flush (siehe vorheriger Eintrag)
+   feuerte bei Mehrsatz-Antworten fast immer VOR dem nächsten Satz, weil die
+   Pause zwischen zwei TTS-Satz-Chunks (das LLM muss den nächsten Satz erst
+   zu Ende streamen) regelmäßig über 300ms liegt - jeder Satz kam so als
+   eigene, einzeln abgespielte Nachricht statt als eine zusammenhängende
+   Antwort. Fix: `flush_now()` auf dem Serializer, ausgelöst über
+   `run_telephony_call`s `notify()`-Hook genau dann, wenn die Pipeline
+   meldet, dass der Bot wirklich fertig gesprochen hat
+   (`BotStoppedSpeakingFrame` via den `'state': 'listening'`-Callback) - das
+   ist das einzige verlässliche "Antwort fertig"-Signal, da `TTSStoppedFrame`
+   selbst `serialize()` nie erreicht (siehe voriger Eintrag). Der
+   Idle-Timeout ist jetzt nur noch Fallback (4s statt 300ms). Commit
+   `42acca4`.
+
+Live verifiziert: Begrüßung flusht jetzt ~2ms nach echtem Sprechende (statt
+vorher 300ms Verzögerung), vollständig, keine Aufteilung.
+
+**Offen für nächsten Test:** ob Mehrsatz-Antworten jetzt tatsächlich flüssig
+klingen (nur mit Loopback getestet, das produziert keine echte Sprache für
+einen mehrteiligen Dialog) - braucht einen echten Anruf mit echtem Gespräch.
