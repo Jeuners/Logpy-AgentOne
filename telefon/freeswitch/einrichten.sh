@@ -45,6 +45,7 @@ fuelle() {  # <vorlage> <ziel>
       -e "s|@@SIP_DOMAIN@@|$SIP_DOMAIN|g" \
       -e "s|@@SIP_PROXY@@|${SIP_PROXY:-$SIP_DOMAIN}|g" \
       -e "s|@@DW3_DDI@@|${DW3_DDI:-}|g" \
+      -e "s|@@DW9_DDI@@|${DW9_DDI:-}|g" \
       -e "s|@@PROJEKT@@|$PROJEKT|g" "$1" > "$2"
 }
 
@@ -62,4 +63,14 @@ if [ -n "${DW3_DDI:-}" ]; then
   echo "DW3      -> $FS_ETC/dialplan/public/00_dw3_warten.xml (DDI: $DW3_DDI, 20s Wartezeit)"
 else
   echo "DW3      -> uebersprungen (DW3_DDI leer in .env)"
+fi
+
+# DW9 (rufagent) -> Astra-Telefonagent. Dateiname "00_dw9_..." ist Absicht:
+# muss alphabetisch vor 00_praxis_ab.xml einsortieren, siehe
+# dw9_rufagent.xml.tpl fuer die Begruendung (2026-09-13 gefunden).
+if [ -n "${DW9_DDI:-}" ]; then
+  fuelle "$PROJEKT/telefon/freeswitch/dw9_rufagent.xml.tpl" "$FS_ETC/dialplan/public/00_dw9_rufagent.xml"
+  echo "DW9      -> $FS_ETC/dialplan/public/00_dw9_rufagent.xml (DDI: $DW9_DDI, -> Astra)"
+else
+  echo "DW9      -> uebersprungen (DW9_DDI leer in .env)"
 fi
