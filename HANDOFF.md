@@ -206,3 +206,26 @@ vorher 300ms Verzögerung), vollständig, keine Aufteilung.
 **Offen für nächsten Test:** ob Mehrsatz-Antworten jetzt tatsächlich flüssig
 klingen (nur mit Loopback getestet, das produziert keine echte Sprache für
 einen mehrteiligen Dialog) - braucht einen echten Anruf mit echtem Gespräch.
+
+## GELÖST 2026-09-13 (weiterer Folgefehler): Anruf trennt nach ~50s ohne Antwort
+
+Erster echter Mehrsatz-Dialog lief mehrere Runden gut (kurze Antworten,
+zusammenhängende Wiedergabe) - dann zweimal hintereinander: VAD hat ausgelöst
+(`min_volume=0.3` reagiert absichtlich auch auf leise Signale, siehe
+vorheriger Eintrag), aber Nemotron hat für die ganze Runde nichts
+transkribiert (`Nemotron result: final, 0 characters`). Ein leeres Transkript
+erreicht `LLMUserAggregator` nie als echte Nutzer-Nachricht - keine
+LLM-Anfrage, keine Antwort, keine Rückmeldung. Für den Anrufer wirkt das wie
+eine tote Leitung; nach zwei solchen Runden hat er aufgelegt.
+
+**Fix:** `NemotronSTTService` bekommt jetzt optional `no_speech_phrases`
+(`astra.services.NO_SPEECH_PHRASES`, z. B. "Wie bitte?", "Kannst du das
+wiederholen?") und spricht bei leerem finalem Transkript eine davon über
+`TTSSpeakFrame`. Nur für die Telefonie verdrahtet (Browser hat schon einen
+sichtbaren "listening"-Zustand). Commit `c8946d0`.
+
+**Noch offen:** ob `min_volume=0.3` grundsätzlich zu locker ist (löst zu oft
+auf Nicht-Sprache aus) - dieser Fix behandelt nur das Symptom (Anrufer bekommt
+immer eine Reaktion), nicht die Ursache. Bei wiederholtem Auftreten:
+`ASTRA_TELEFON_VAD_MIN_VOLUME` schrittweise erhöhen und beobachten, ob echte
+leise Sprache dann noch erkannt wird.
