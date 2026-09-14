@@ -1,8 +1,66 @@
-# Handoff — Live-Telefonagent (laufend, zuletzt aktualisiert 2026-09-13 Tag)
+# Handoff — Live-Telefonagent (laufend, zuletzt aktualisiert 2026-09-14)
 
 ## Stand in einem Satz
 
 Voller Weg funktioniert Ende-zu-Ende: externer Anruf auf Durchwahl 9 (Plusnet → FreeSWITCH → `dialog/pipecat_bootstrap.py` → WebSocket → Astra) erreicht Astra, und Astra liefert jetzt auch eine echte, fertige Antwort statt nur "Einen Moment bitte" (Fix 2026-09-13, siehe unten) - kein offener Blocker mehr bekannt.
+
+## 2026-09-14 — Leitung nach Neustart ~80 min tot: Watchdog bekam nichts hoch
+
+**Symptom:** Nach einem Neustart des Mac mini (~12:39) blieb die Leitung
+(PROFIL=aufzug-notdienst) tot, bis ~13:58 von Hand gestartet wurde. Der
+launchd-Watchdog (`~/Library/LaunchAgents/net.dillenberg.fonagent.plist`,
+alle 5 min `starten.sh`) versuchte es 11-mal: jeweils "Backgrounding.",
+dann "fs_cli antwortet nicht", exit 1. `freeswitch.log` blieb unberührt,
+kein Crash-Report. Laut `autostart.log` hat der Watchdog FreeSWITCH **noch
+nie** erfolgreich gestartet - bis dahin lief es offenbar immer manuell.
+
+Drei Ursachen, drei Fixes:
+
+### 1. FreeSWITCH stirbt unter launchd an SIGPIPE (Commit `f785ab3`)
+
+macOS' Datenschutz "Lokales Netzwerk" gilt für launchd-Prozesse, nicht für
+Terminal-Shells: jedes Senden an eine LAN-Adresse (192.168.x) endet dort mit
+`EPIPE`, Internet und 127.0.0.1 gehen. FreeSWITCH fragt beim Start per NAT-PMP
+den Router (`192.168.2.1:5351`) - auch mit `-nonatmap`, das schaltet nur das
+Port-Mapping ab, nicht die Erkennung. So früh ignoriert FreeSWITCH SIGPIPE noch
+nicht -> Prozess tot ~0,5 s nach dem Backgrounding.
+
+Belegt mit einer zweiten FreeSWITCH-Instanz (eigene Ports, keine Gateways) über
+einen temporären LaunchAgent: `-nc -rp -nonatmap` stirbt reproduzierbar,
+`-nf` endet mit exit 141 (SIGPIPE), mit `-nonat` läuft sie. Unified Log im
+Todesmoment: `UserEventAgent: Got local network blocked notification`. Ein
+Python-UDP-Test unter launchd: Router -> Errno 32, 9.9.9.9 -> ok.
+
+**Fix:** `-nonat` im FreeSWITCH-Aufruf in `starten.sh`. Kein Verlust - der
+Router hat NAT-PMP nie beantwortet (`nat_map status`: UNKNOWN), die externe IP
+kommt per STUN.
+
+**Grenze, die bleibt:** Alles, was der Watchdog startet, erreicht **keine
+LAN-Geräte**. Heute unkritisch (Trunks übers Internet, Sockets auf 127.0.0.1,
+keine lokalen Telefone registriert). Kommen lokale SIP-Telefone o. Ä. dazu,
+bricht das unter launchd wieder - dann nicht lange suchen.
+
+**Noch nicht unter echten Bedingungen verifiziert:** `starten.sh` selbst hat
+FreeSWITCH mit `-nonat` noch nicht per Watchdog gestartet (solange es läuft,
+überspringt das Skript es). Test: FreeSWITCH stoppen, dann
+`launchctl kickstart gui/$(id -u)/net.dillenberg.fonagent` - ~1 min Ausfall.
+
+### 2. Pipecat-Bootstrap brach mit ModuleNotFoundError ab (Commit `907f511`)
+
+`starten.sh` startete `dialog.pipecat_bootstrap` mit System-`python3`, dem
+`gevent`/`greenswitch` fehlen. Jetzt `.venv/bin/python`. Die übrigen
+`pipe.*`-Dienste laufen weiterhin mit System-`python3` (dort vollständig).
+
+### 3. Störungswache lief genau beim Ausfall nicht (Commit `6db89af`)
+
+`pipe.monitor` wurde erst nach Trunk UP gestartet - kam FreeSWITCH nicht hoch,
+gab es auch keine Wache und keinen Alarm. Jetzt startet sie als Erstes in
+`starten.sh`, noch vor der Vorabprüfung. `pipe.dienste` meldet "FreeSWITCH
+läuft nicht" bzw. "Trunk DOWN" selbst.
+
+**Offen:** Der Alarm ist nur eine lokale macOS-Benachrichtigung (`pipe/alarm.py`,
+osascript) auf dem Mac mini - wenn dort niemand vor dem Bildschirm sitzt, sieht
+ihn keiner. Für eine Notdienst-Leitung bräuchte es einen Push-Kanal nach außen.
 
 ## 2026-09-13 (Tag) — Zwei Bugs gefunden und behoben
 
