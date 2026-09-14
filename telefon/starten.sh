@@ -79,7 +79,14 @@ else
   # -rp: Echtzeit-Priorität. Auf einem Rechner, der nebenher Whisper und ein
   # Sprachmodell laufen lässt, kommt FreeSWITCH sonst nicht rechtzeitig dran und
   # das Audio stückelt - RTP will alle 20 ms ein Paket losschicken.
-  freeswitch -nc -rp -nonatmap \
+  # -nonat: keine NAT-PMP/UPnP-Erkennung am Router (192.168.2.1:5351). Unter
+  # launchd (Watchdog) blockiert macOS' "Lokales Netzwerk"-Datenschutz jedes
+  # Senden ins LAN mit EPIPE; so frueh im Start ignoriert FreeSWITCH SIGPIPE
+  # noch nicht und stirbt 0,5 s nach dem Backgrounding - ohne Log, ohne
+  # Crash-Report. Aus einer Terminal-Shell passiert das nicht, deshalb lief es
+  # manuell. Der Router antwortet ohnehin nicht (nat_map status: UNKNOWN); die
+  # externe IP kommt per STUN (vars.xml), Trunks und Sockets brauchen kein LAN.
+  freeswitch -nc -rp -nonat -nonatmap \
     -conf "$FS_ETC" \
     -log /opt/homebrew/var/log/freeswitch \
     -db /opt/homebrew/var/lib/freeswitch/db \
