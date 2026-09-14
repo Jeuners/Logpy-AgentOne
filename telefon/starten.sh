@@ -135,7 +135,9 @@ if [ "${status:-}" = "UP" ]; then
     if pgrep -f "[d]ialog.pipecat_bootstrap" >/dev/null; then
       echo "Pipecat-Bootstrap laeuft bereits."
     else
-      nohup python3 -u -m dialog.pipecat_bootstrap >> telefon/pipecat_bootstrap.log 2>&1 &
+      # Aus der Projekt-venv: greenswitch/gevent fehlen im System-python3,
+      # dort bricht der Bootstrap sofort mit ModuleNotFoundError ab.
+      nohup .venv/bin/python -u -m dialog.pipecat_bootstrap >> telefon/pipecat_bootstrap.log 2>&1 &
       echo "Pipecat-Bootstrap gestartet (Log: telefon/pipecat_bootstrap.log)"
     fi
   fi
