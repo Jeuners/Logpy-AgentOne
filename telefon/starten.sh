@@ -32,6 +32,19 @@ for log in telefon/autostart.log telefon/watcher.log telefon/leitstand.log telef
   fi
 done
 
+# Stoerungswache als Erstes - sie muss gerade dann laufen, wenn der Rest nicht
+# hochkommt (Vorabpruefung schlaegt fehl, FreeSWITCH stirbt, Trunk registriert
+# nicht). Frueher startete sie erst nach Trunk UP und fehlte damit genau bei
+# Ausfaellen: 2026-09-14 war die Leitung nach einem Neustart ~80 min tot, ohne
+# Alarm. Sie meldet FreeSWITCH/Trunk selbst (pipe.dienste), beim normalen
+# Hochfahren hoechstens einmal "gestoert" und kurz darauf "wieder ok".
+if pgrep -f "[p]ipe.monitor" >/dev/null; then
+  echo "Stoerungswache laeuft bereits."
+else
+  nohup python3 -u -m pipe.monitor >> telefon/monitor.log 2>&1 &
+  echo "Stoerungswache gestartet (Log: telefon/monitor.log)"
+fi
+
 fehler=0
 melde() { printf '  %-38s %s\n' "$1" "$2"; }
 
@@ -129,12 +142,6 @@ if [ "${status:-}" = "UP" ]; then
     nohup python3 -u -m pipe.server >> telefon/leitstand.log 2>&1 &
     sleep 2
     tail -1 telefon/leitstand.log
-  fi
-  if pgrep -f "[p]ipe.monitor" >/dev/null; then
-    echo "Stoerungswache laeuft bereits."
-  else
-    nohup python3 -u -m pipe.monitor >> telefon/monitor.log 2>&1 &
-    echo "Stoerungswache gestartet (Log: telefon/monitor.log)"
   fi
   # Pipecat-Testleitung (Nebenstelle 7501) - nur wenn konfiguriert, siehe
   # dialog/pipecat_bootstrap.py und dialplan/default/06_agentzwei_pipecat_test.xml.
