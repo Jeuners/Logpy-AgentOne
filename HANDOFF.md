@@ -1,8 +1,80 @@
-# Handoff — Live-Telefonagent (laufend, zuletzt aktualisiert 2026-09-14)
+# Handoff — Live-Telefonagent (laufend, zuletzt aktualisiert 2026-09-17)
 
 ## Stand in einem Satz
 
-Voller Weg funktioniert Ende-zu-Ende: externer Anruf auf Durchwahl 9 (Plusnet → FreeSWITCH → `dialog/pipecat_bootstrap.py` → WebSocket → Astra) erreicht Astra, und Astra liefert jetzt auch eine echte, fertige Antwort statt nur "Einen Moment bitte" (Fix 2026-09-13, siehe unten) - kein offener Blocker mehr bekannt.
+Astra ist live auf zwei Wegen erreichbar: direkt über Durchwahl 9 und über die Hauptnummer mit **Taste 9 während der Ansage** (Plusnet → FreeSWITCH → `dialog/pipecat_bootstrap.py` → WebSocket → Astra auf minim4-1, Modell `qwen3.5:4b`). Beides am 2026-09-17 mit echten Anrufen bestätigt. Größter offener Punkt: **Sprachqualität am Telefon ist schlecht** (noch nicht untersucht).
+
+## 2026-09-17 (Abend) — Taste 9 auf der Hauptnummer, Astra-Fakten, Offenes
+
+### Taste 9 während der Ansage → Astra (Commit `7c85f91`)
+
+`00_praxis_ab.xml` spielt `telefon/ansage.wav` jetzt per
+`play_and_get_digits` (Regex `^9$`, 200 ms Nachlauf) statt `playback` und
+ruft danach `execute_extension hauptnummer_taste_${hauptnummer_taste} XML
+hauptnummer_menue` auf. Nur `hauptnummer_taste_9` existiert dort →
+`socket 127.0.0.1:8095 async full`, identisch zu DW9. Ohne Taste findet
+`execute_extension` nichts und die Aufnahme startet wie bisher.
+
+- Eigener Kontext `hauptnummer_menue` (`dialplan/hauptnummer_menue.xml`,
+  Top-Level wie `agentzwei.xml`), weil der Catch-all in `public` die Wahl
+  sonst verschluckt. Vorlage `telefon/freeswitch/hauptnummer_menue.xml.tpl`,
+  eingespielt von `einrichten.sh`.
+- DW3 und DW9 unverändert (DW3 spielt weiter `playback`, keine Tastenwahl).
+- **Andere Taste** (z. B. 5) bricht die Ansage ab und startet sofort die
+  Aufnahme - bewusst so gelassen, bei Bedarf ändern.
+- Kein `hangup` nach `socket`: läuft der Bootstrap nicht, landet der Anrufer
+  auf dem Anrufbeantworter statt in der Stille.
+- Verifiziert: Loopback (Taste 9 → Astra-Begrüßung, Taste 5 → Aufnahme) und
+  echter Anruf durch den Nutzer ("klappt super").
+
+**Achtung beim Testen:** Jeder Loopback-Test, der bis zur Aufnahme kommt,
+legt eine echte Datei in `telefon/eingang/` ab, die `pipe.watch` nach
+wenigen Sekunden als Anruf verarbeitet. Sofort löschen oder vor der Aufnahme
+auflegen (`uuid_kill`).
+
+### Notruf-Ton: eingebaut und auf Wunsch wieder entfernt
+
+Zwischendurch lief auf der Hauptnummer ein 54-s-Musikton
+(`~/Downloads/MARTIN-Notruf_Ton.m4a`) vor der Ansage mit Taste 1 → Astra
+(`83b576f`), dann eine Telefonband-Aufbereitung (`60b6154`, zurückgenommen
+in `4e7eeab`). Der Nutzer wollte die alte Ansage zurück: komplett revertiert
+in `c9bf40d`, Repo und Live-Dialplan waren danach identisch mit Tag
+`vor-notruf-ton-2026-09-17` bzw. `ablage/sicherung-vor-notruf-ton-2026-09-17/`.
+Erkenntnis falls es wiederkommt: der Ton ist bass-lastige Musik (Energie fast
+komplett unter 300 Hz, im Telefonband nur -25 dB) und klingt am Telefon
+schlecht - A-law war nicht die Ursache.
+
+### Astra-Fakten (minim4-1)
+
+- **Modell am Telefon: `qwen3.5:4b`** (nicht mehr `granite4.2:8b`), belegt
+  im Log (`'title': 'Antwort formulieren', 'detail': 'qwen3.5:4b'`) und über
+  `https://minim4-1.tail0f2cb2.ts.net/api/status`.
+- **Latenz:** erste Antwort pro Anruf ~5,8 s, danach ~2,3 s - das Vorwärmen
+  beim Verbindungsaufbau reicht offenbar nicht ganz.
+- **Log:** `~/Desktop/martin-voice-interface/.runtime/server.log` (Prozess
+  `uv run python -m astra.server`, gestartet 2026-09-17 15:29).
+  `/private/tmp/astra_server.log` ist seit 2026-09-13 tot.
+- **SSH auf minim4-1** ist seit 2026-09-17 an ("Entfernte Anmeldung"),
+  Schlüssel-Login von minim4-2 funktioniert (`ssh minim4-1`).
+
+### Offen
+
+1. **Sprachqualität am Telefon schlecht** (Nutzer, 2026-09-17, nach Anrufen
+   über Taste 9) - nicht untersucht. Kandidaten: TTS (`LocalPocketTTSService`)
+   → Resampling auf 8 kHz, `uuid_audio_stream`/Playback-Kette im Bootstrap,
+   Codec (Leitung läuft PCMA).
+2. **IP-Wechsel-Erkennung** in `starten.sh` noch nie real ausgelöst (nur der
+   Profil-Neustart von Hand getestet).
+3. **`agentzwei.xml`:** Kommentar sagt "AgentTwo begraben, register=false",
+   eingestellt ist `register=true` und der Trunk ist REGED - Anrufe auf DW2
+   laufen in einen Kontext ohne Backend. Nicht angefasst.
+4. Störungs-Alarm weiterhin nur lokal auf dem Mac mini (siehe 2026-09-14).
+
+**Diagnose-Tipp (Fehlalarm am 2026-09-17):** "DW9 landet auf der Zentrale"
+war eine verwählte Hauptnummer. Welche Nummer wirklich gewählt wurde, steht
+pro Anruf im FreeSWITCH-Log:
+`grep -a "Regex .*\[dw9_rufagent\]" /opt/homebrew/var/log/freeswitch/freeswitch.log | tail`
+- DW9 = `sip:+49210378916179@ipfonie.de`, Hauptnummer = `sip:+4921037891617@ipfonie.de`.
 
 ## 2026-09-17 — Leitung stumm nach IP-Wechsel, Watchdog-Kinder sterben
 
@@ -227,9 +299,15 @@ bleiben, siehe `run_telephony_call`/`_run_pipeline`s Cleanup-Pfad.
 - **FreeSWITCH-Dialplan neu laden** (nach Änderungen in `dialplan/public/`,
   kein Neustart nötig):
   `ssh minim4-2 "export PATH=/opt/homebrew/bin:\$PATH; fs_cli -P 8022 -p ClueCon -x 'reloadxml'"`
-- **Astras Live-Log**: `/private/tmp/astra_server.log` auf minim4-1 (NICHT
-  `.runtime/server.log` - das ist ein alter, verwaister Lauf). Bei Zweifel,
-  wohin ein laufender Prozess loggt: `lsof -p <pid> -a -d 0,1,2`.
+- **Astras Live-Log**: `~/Desktop/martin-voice-interface/.runtime/server.log`
+  auf minim4-1 (Stand 2026-09-17; `/private/tmp/astra_server.log` ist alt).
+  Bei Zweifel, wohin ein laufender Prozess loggt:
+  `lsof -p <pid> -a -d 0,1,2`.
+- **Astras aktives Modell**: `curl -s https://minim4-1.tail0f2cb2.ts.net/api/status`.
+- **Hauptnummer-Menü ohne Telefon testen** (Loopback in den public-Kontext,
+  Taste per `uuid_recv_dtmf` auf das B-Bein; Aufnahme-Warnung oben beachten):
+  `fs_cli -P 8022 -x 'originate loopback/5555/public &park()'`, dann
+  `fs_cli -P 8022 -x "uuid_recv_dtmf <uuid von loopback/5555-b> 9"`.
 - **Bootstrap-Log**: `fonagent-one/telefon/pipecat_bootstrap.log` auf
   minim4-2.
 - **ESL-Port** auf minim4-2 ist **8022**, nicht der Standard 8021.
