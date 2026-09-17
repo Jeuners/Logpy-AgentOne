@@ -9,7 +9,14 @@
       <action application="answer"/>
       <!-- kurze Pause, sonst schneidet die Gegenstelle den Anfang der Ansage ab -->
       <action application="sleep" data="700"/>
-      <action application="playback" data="@@PROJEKT@@/telefon/ansage.wav"/>
+      <!-- Ansage mit Tastenwahl: 9 waehrend der Ansage -> Astra wie Durchwahl 9
+           (siehe hauptnummer_menue.xml.tpl). Ohne Taste nach 200 ms weiter zur
+           Aufnahme - die Ansage endet schon mit Signalton + 0,3 s Stille.
+           Argumente: min max versuche timeout_ms terminator datei
+           datei_bei_fehleingabe variable regex -->
+      <action application="play_and_get_digits"
+              data="1 1 1 200 # @@PROJEKT@@/telefon/ansage.wav silence_stream://10 hauptnummer_taste ^9$"/>
+      <action application="execute_extension" data="hauptnummer_taste_${hauptnummer_taste} XML hauptnummer_menue"/>
       <!-- record: <datei> <max_sekunden> <stille_schwelle> <stille_sekunden> -->
       <action application="record"
               data="@@PROJEKT@@/telefon/eingang/${strftime(%Y%m%d-%H%M%S)}_${caller_id_number}.wav 120 200 4"/>

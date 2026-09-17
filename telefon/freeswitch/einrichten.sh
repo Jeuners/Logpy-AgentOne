@@ -52,10 +52,14 @@ fuelle() {  # <vorlage> <ziel>
 fuelle "$PROJEKT/telefon/freeswitch/plusnet.xml.tpl" "$FS_ETC/sip_profiles/external/plusnet.xml"
 chmod 600 "$FS_ETC/sip_profiles/external/plusnet.xml"   # enthaelt das SIP-Passwort
 fuelle "$PROJEKT/telefon/freeswitch/praxis_ab.xml.tpl" "$FS_ETC/dialplan/public/00_praxis_ab.xml"
+# Kontext fuer Taste 9 waehrend der Ansage - Top-Level unter dialplan/,
+# nicht in public/ (siehe hauptnummer_menue.xml.tpl).
+fuelle "$PROJEKT/telefon/freeswitch/hauptnummer_menue.xml.tpl" "$FS_ETC/dialplan/hauptnummer_menue.xml"
 
 echo "Trunk    -> $FS_ETC/sip_profiles/external/plusnet.xml (Rechte 600)"
 echo "Dialplan -> $FS_ETC/dialplan/public/00_praxis_ab.xml"
 echo "Ansage   -> $PROJEKT/telefon/ansage.wav"
+echo "Menue    -> $FS_ETC/dialplan/hauptnummer_menue.xml (Taste 9 -> Astra)"
 echo "Eingang  -> $PROJEKT/telefon/eingang"
 
 if [ -n "${DW3_DDI:-}" ]; then
