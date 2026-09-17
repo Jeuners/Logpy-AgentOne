@@ -108,6 +108,30 @@ else
   sleep 15
 fi
 
+# Oeffentliche IP abgleichen. FreeSWITCH holt sie per STUN nur beim Laden der
+# XML (vars.xml, stun-set) und meldet sie Plusnet als Contact. Nach einer
+# Zwangstrennung des Routers mit neuer IP bleibt der Trunk trotzdem REGED/UP
+# (Registrierung und Pings gehen raus), aber eingehende INVITEs laufen an die
+# alte Adresse - die ganze Leitung ist stumm, ohne Fehler im Log. So am
+# 2026-09-17 passiert: Contact 9.246.125.72, tatsaechlich 217.142.18.120.
+# Bei Abweichung: reloadxml (STUN neu) + external-Profil neu starten, nur wenn
+# gerade kein Gespraech laeuft - sonst im naechsten Watchdog-Lauf.
+aktuell=$(fs_cli -P "$FS_PORT" -x "stun stun.freeswitch.org" 2>/dev/null | head -1 | cut -d: -f1)
+gemeldet=$(fs_cli -P "$FS_PORT" -x "sofia status profile external" 2>/dev/null \
+           | awk '/^Ext-SIP-IP/{print $2}')
+if [[ "$aktuell" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ -n "$gemeldet" ] \
+   && [ "$aktuell" != "$gemeldet" ]; then
+  gespraeche=$(fs_cli -P "$FS_PORT" -x "show calls count" 2>/dev/null | awk '/total/{print $1}')
+  if [ "${gespraeche:-0}" = "0" ]; then
+    echo "$(date '+%F %T') Oeffentliche IP geaendert ($gemeldet -> $aktuell) - external-Profil wird neu gestartet."
+    fs_cli -P "$FS_PORT" -x "reloadxml" >/dev/null 2>&1
+    fs_cli -P "$FS_PORT" -x "sofia profile external restart" >/dev/null 2>&1
+    sleep 10
+  else
+    echo "$(date '+%F %T') Oeffentliche IP geaendert ($gemeldet -> $aktuell), aber $gespraeche Gespraech(e) aktiv - naechster Lauf."
+  fi
+fi
+
 # Auf die Registrierung beim Provider warten.
 # Quelle ist fs_cli, nicht das Log: das Log wird zum Testen geleert und taugt
 # dann nicht mehr als Zustandsquelle.

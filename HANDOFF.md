@@ -4,6 +4,40 @@
 
 Voller Weg funktioniert Ende-zu-Ende: externer Anruf auf Durchwahl 9 (Plusnet → FreeSWITCH → `dialog/pipecat_bootstrap.py` → WebSocket → Astra) erreicht Astra, und Astra liefert jetzt auch eine echte, fertige Antwort statt nur "Einen Moment bitte" (Fix 2026-09-13, siehe unten) - kein offener Blocker mehr bekannt.
 
+## 2026-09-17 — Leitung stumm nach IP-Wechsel, Watchdog-Kinder sterben
+
+**Symptom:** Durchwahl 9 (und die ganze Leitung) nahm nicht ab. Letzter
+eingehender Anruf im FreeSWITCH-Log: 2026-09-15 18:05. Trunks trotzdem
+REGED/UP.
+
+### 1. Veraltete öffentliche IP im Contact
+
+FreeSWITCH ermittelt die externe IP per STUN nur beim Laden der XML
+(`vars.xml`, `stun-set`). Contact an Plusnet war noch `9.246.125.72`,
+tatsächlich `217.142.18.120` (Zwangstrennung, 05:17 kurz 408/DOWN).
+Registrierung und Pings gehen weiter raus, eingehende INVITEs laufen ins
+Leere - kein Fehler im Log.
+
+**Fix:** `starten.sh` vergleicht bei jedem Watchdog-Lauf
+`fs_cli -x 'stun stun.freeswitch.org'` mit `Ext-SIP-IP` des
+external-Profils; bei Abweichung und 0 Gesprächen `reloadxml` +
+`sofia profile external restart`. Nach einem IP-Wechsel ist die Leitung
+also bis zu 5 min stumm. Profil-Neustart von Hand getestet (Trunks sofort
+wieder REGED); der Abweichungsfall selbst noch nicht real ausgelöst.
+
+### 2. launchd beendete alles, was starten.sh im Hintergrund startet
+
+Vom Watchdog gestarteter Pipecat-Bootstrap band Port 8095 und war
+Sekunden später weg, ohne Log. Ursache: launchd räumt nach Jobende die
+Prozessgruppe ab. Betraf auch `pipe.monitor`/`pipe.watch`/`pipe.server` -
+Fix 3 vom 2026-09-14 (Störungswache zuerst) griff unter launchd also nie.
+FreeSWITCH überlebt, weil es sich selbst abkoppelt.
+
+**Fix:** `<key>AbandonProcessGroup</key><true/>` in
+`~/Library/LaunchAgents/net.dillenberg.fonagent.plist` (liegt **nicht** im
+Repo), per `launchctl bootout`/`bootstrap` neu geladen. Verifiziert:
+Bootstrap per Watchdog gestartet, lebt nach Jobende weiter.
+
 ## 2026-09-14 — Leitung nach Neustart ~80 min tot: Watchdog bekam nichts hoch
 
 **Symptom:** Nach einem Neustart des Mac mini (~12:39) blieb die Leitung
