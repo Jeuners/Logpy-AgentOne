@@ -17,3 +17,4 @@ __pycache__/
 /telefon/modell.json
 # Trainingsdaten-Export (pipe.export) - enthaelt volle Transkripte/Namen
 /training/
+/telefon/notruf_ton.wav

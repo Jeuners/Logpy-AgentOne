@@ -136,3 +136,6 @@ ffmpeg -v error -y -i "$TMP/sprache.wav" -i "$TMP/ton.wav" \
 
 DAUER=$(ffprobe -v error -show_entries format=duration -of csv=p=0 telefon/ansage.wav)
 printf 'telefon/ansage.wav erzeugt (%.1f s, %s)\n' "$DAUER" "$BESCHREIBUNG"
+
+# Notruf-Ton gehoert zum Profil wie die Ansage - bei Profilwechsel mitziehen.
+PROFIL="$PROFIL" telefon/notruf_ton_bauen.sh

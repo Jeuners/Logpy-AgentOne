@@ -4,6 +4,25 @@
 
 Voller Weg funktioniert Ende-zu-Ende: externer Anruf auf Durchwahl 9 (Plusnet → FreeSWITCH → `dialog/pipecat_bootstrap.py` → WebSocket → Astra) erreicht Astra, und Astra liefert jetzt auch eine echte, fertige Antwort statt nur "Einen Moment bitte" (Fix 2026-09-13, siehe unten) - kein offener Blocker mehr bekannt.
 
+## 2026-09-17 — Notruf-Ton mit Taste 1 -> Astra
+
+Hauptnummer (Catch-all `00_praxis_ab.xml`) und DW3 (nach den 20 s) spielen
+nach dem Annehmen `telefon/notruf_ton.wav` (54 s Ton, Quelle
+`profile/aufzug-notdienst/notruf_ton.m4a`, gebaut von
+`telefon/notruf_ton_bauen.sh`: 8 kHz mono PCM16, -3 dB). Taste 1 während des
+Tons oder bis 3 s danach -> `execute_extension notruf_taste_1 XML
+notruf_menue` -> `socket 127.0.0.1:8095` wie DW9. Ohne Taste weiter zu
+Ansage + Aufnahme wie bisher. DW9 unverändert direkt Astra.
+
+Eigener Kontext `notruf_menue` (`dialplan/notruf_menue.xml`, Top-Level),
+weil der Catch-all in `public` die Wahl sonst verschlucken würde.
+
+Verifiziert: Loopback mit `uuid_recv_dtmf 1` und echter Anruf 17:00 (DTMF
+per RTP kam an, Astra übernahm). **Nicht getestet:** Pfad ohne Taste
+(Ton zu Ende -> Ansage -> Aufnahme) und Profil ohne Ton-Datei.
+Sicherung vorher: Git-Tag `vor-notruf-ton-2026-09-17`, Live-Dialplan +
+ansage.wav + plist in `ablage/sicherung-vor-notruf-ton-2026-09-17/`.
+
 ## 2026-09-17 — Leitung stumm nach IP-Wechsel, Watchdog-Kinder sterben
 
 **Symptom:** Durchwahl 9 (und die ganze Leitung) nahm nicht ab. Letzter
